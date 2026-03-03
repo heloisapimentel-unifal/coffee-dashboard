@@ -55,15 +55,16 @@ header           { background: transparent !important; }
     padding: 0 !important;
 }
 
-/* ── Collapse/expand arrows: orange-lt on dark bg ── */
-[data-testid="stSidebar"] svg {
-    fill:   var(--orange-lt) !important;
-    stroke: var(--orange-lt) !important;
+ /*── Collapse/expand arrows: orange-lt on dark bg ── */
+[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] svg path {
+    fill: #E36414 !important;
+    stroke: #E36414 !important;
 }
-/* Hamburger on beige bg when collapsed: dark */
-[data-testid="collapsedControl"] svg {
-    fill:   var(--text) !important;
-    stroke: none !important;
+
+/* Ícone quando a sidebar está FECHADA (Marrom) */
+[data-testid="collapsedControl"] svg path {
+    fill: #4B210E !important;
+    stroke: #4B210E !important;
 }
 
 /* ── Sidebar header block ── */
@@ -161,6 +162,11 @@ header           { background: transparent !important; }
     border-left:    3px solid transparent !important;
     box-sizing:     border-box !important;
     transition:     background 0.15s, color 0.15s, border-color 0.15s !important;
+    position:        relative !important;
+    z-index:         100 !important;
+}
+    [data-testid="stSidebar"] .stRadio label div[data-testid="stMarkdownContainer"] p {
+    pointer-events: none !important;
 }
 
 /* Hide the radio circle completely */
@@ -175,15 +181,20 @@ header           { background: transparent !important; }
     border-color: rgba(221,168,83,0.3) !important;
 }
 
-/* Selected — uses aria-checked which Streamlit always sets correctly */
-[data-testid="stSidebar"] .stRadio label[aria-checked="true"] {
-    background:  rgba(182,84,49,0.28) !important;
-    color:       var(--orange-lt) !important;
-    font-weight: 700 !important;
-    border-color: var(--accent) !important;
+/* Item Selecionado — Exatamente como na imagem */
+/* 1. FORÇAR O DESIGN DO BOTÃO SELECIONADO (IGUAL À IMAGEM) */
+div[data-testid="stSidebarUserContent"] .stRadio div[role="radiogroup"] label[aria-checked="true"] {
+    background-color: rgba(182, 84, 49, 0.4) !important; 
+    border-left: 5px solid #E36414 !important;
+    border-radius: 8px !important;
+    transition: none !important;
 }
-[data-testid="stSidebar"] .stRadio label[aria-checked="true"]:hover {
-    background: rgba(182,84,49,0.38) !important;
+
+/* Força a cor do texto e dos ícones dentro do botão */
+div[data-testid="stSidebarUserContent"] .stRadio div[role="radiogroup"] label[aria-checked="true"] div[data-testid="stMarkdownContainer"] p,
+div[data-testid="stSidebarUserContent"] .stRadio div[role="radiogroup"] label[aria-checked="true"] span {
+    color: #E36414 !important;
+    font-weight: 700 !important;
 }
 
 /* ── KPI cards ── */
