@@ -1,243 +1,390 @@
 import streamlit as st
-from streamlit_option_menu import option_menu
 
-# ── Page Config ──────────────────────────────────────────────────────────────
-# Sets the browser tab title, uses the full screen width, and keeps the
-# sidebar open by default when the app loads.
 st.set_page_config(
     page_title="Coffee Insight",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
-# ── Global Styles ─────────────────────────────────────────────────────────────
-# All visual customisation lives here in a single CSS block injected via
-# st.markdown. Using CSS custom properties (--variables) means the entire
-# colour palette can be changed in one place without hunting through the file.
+# ── Session state ─────────────────────────────────────────────────────────────
+if "sb_open" not in st.session_state:
+    st.session_state.sb_open = True
+if "page" not in st.session_state:
+    st.session_state.page = "Visão Geral"
+
+PAGES = ["Visão Geral", "Clientes", "Produtos", "Vendas"]
+
+ICONS = {
+    "Visão Geral": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23E8D8C4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/%3E%3Cpolyline points='9 22 9 12 15 12 15 22'/%3E%3C/svg%3E",
+    "Clientes":    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23E8D8C4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E",
+    "Produtos":    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23E8D8C4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 8h1a4 4 0 0 1 0 8h-1'/%3E%3Cpath d='M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z'/%3E%3Cline x1='6' y1='1' x2='6' y2='4'/%3E%3Cline x1='10' y1='1' x2='10' y2='4'/%3E%3Cline x1='14' y1='1' x2='14' y2='4'/%3E%3C/svg%3E",
+    "Vendas":      "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23E8D8C4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='18' y1='20' x2='18' y2='10'/%3E%3Cline x1='12' y1='20' x2='12' y2='4'/%3E%3Cline x1='6' y1='20' x2='6' y2='14'/%3E%3Cline x1='2' y1='20' x2='22' y2='20'/%3E%3C/svg%3E",
+}
+# Icon colour variants via URL-encoded stroke colour
+ICONS_ACT  = {k: v.replace("%23E8D8C4", "%23F4A460") for k, v in ICONS.items()}  # orange active
+ICONS_DARK = {k: v.replace("%23E8D8C4", "%232E1710") for k, v in ICONS.items()}  # dark for rail
+ICONS_WHITE= {k: v.replace("%23E8D8C4", "%23FFFFFF") for k, v in ICONS.items()}  # white for active rail
+
+is_open = st.session_state.sb_open
+page    = st.session_state.page
+
+# JS helper: clicks the hidden Streamlit button matching a given key label.
+# This bridges the gap between our custom HTML nav and Streamlit's event loop.
+def js_click(label: str) -> str:
+    safe = label.replace("'", "\\'")
+    return (
+        "var btns = window.parent.document.querySelectorAll('.stButton button');"
+        f"for(var i=0;i<btns.length;i++){{if(btns[i].innerText.trim()==='{safe}'){{btns[i].click();break;}}}}"
+    )
+
+def icon_img(name: str, size: int = 18, variant: str = "default") -> str:
+    src = {"active": ICONS_ACT, "dark": ICONS_DARK, "white": ICONS_WHITE}.get(variant, ICONS)[name]
+    return f'<img src="{src}" width="{size}" height="{size}" style="flex-shrink:0">'
+
+HAMBURGER_SVG = """<svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+  stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+  <line x1="3" y1="6"  x2="21" y2="6"/>
+  <line x1="3" y1="12" x2="21" y2="12"/>
+  <line x1="3" y1="18" x2="21" y2="18"/>
+</svg>"""
+
+# ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@300;400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@300;400;700&family=Saira+Condensed:wght@400;600;700&display=swap');
 
-/* ── Design tokens ───────────────────────────────────────────────────────────
-   Every colour used in the app is defined here.
-   --bg        : main content background (warm beige)
-   --surface   : card / widget background (white)
-   --sidebar   : sidebar panel background (dark espresso brown)
-   --accent    : left border on KPI cards and selected menu item (burnt orange)
-   --gold      : horizontal divider and icon highlight colour
-   --text      : primary readable text (near-black brown)
-   --text-soft : secondary / label text (medium brown)
-   --border    : subtle card borders
-   ──────────────────────────────────────────────────────────────────────── */
 :root {
-    --bg:        #F5EEDC;
-    --surface:   #FFFFFF;
-    --sidebar:   #412314;
-    --accent:    #B65431;
-    --gold:      #B8860B;
-    --text:      #1A0A04;
-    --text-soft: #5C3D28;
-    --border:    #D4C4B0;
+    --bg:         #F5EEDC;
+    --surface:    #FFFFFF;
+    --sidebar:    #412314;
+    --sidebar-dk: #2E1710;
+    --accent:     #B65431;
+    --gold:       #DDA853;
+    --orange-lt:  #F4A460;
+    --text:       #1A0A04;
+    --text-soft:  #5C3D28;
+    --border:     #D4C4B0;
+    --nav-text:   #E8D8C4;
+    --nav-muted:  #9C7A65;
 }
 
-/* ── Base typography & background ───────────────────────────────────────────
-   Apply DM Sans globally and set the warm beige app background.
-   The broad [class*="css"] selector catches Streamlit's generated classnames. */
 html, body, [class*="css"] {
-    font-family: 'DM Sans', sans-serif !important;
+    font-family: 'Roboto Condensed', sans-serif !important;
     color: var(--text) !important;
 }
 .stApp { background-color: var(--bg) !important; }
-.block-container { padding-top: 1.5rem !important; }
+.block-container {
+    padding: 0 !important;
+    max-width: 100% !important;
+}
+header,
+[data-testid="stSidebar"],
+[data-testid="collapsedControl"] { display: none !important; }
 
-/* ── Main content text contrast ─────────────────────────────────────────────
-   Streamlit sometimes overrides heading and paragraph colours to a light grey.
-   We re-assert dark text here, scoped to .stApp to avoid touching the sidebar. */
-.stApp h1, .stApp h2, .stApp h3,
-.stApp p, .stApp span {
-    color: var(--text) !important;
+/* Remove gap between sidebar and content columns */
+div[data-testid="stHorizontalBlock"] {
+    gap: 0 !important;
+    align-items: stretch !important;
 }
 
-/* ── Top chrome (Streamlit header bar) ──────────────────────────────────────
-   The thin header bar Streamlit renders at the very top is made transparent
-   so it blends into our beige background. */
-header { background: transparent !important; }
+/* ── Hamburger button (shared) ── */
+.hbg {
+    cursor: pointer;
+    color: var(--orange-lt);
+    display: flex; align-items: center; justify-content: center;
+    width: 36px; height: 36px;
+    border-radius: 6px;
+    transition: background 0.15s;
+}
+.hbg:hover { background: rgba(244,164,96,0.18); }
 
-/* ── Sidebar panel ───────────────────────────────────────────────────────────
-   Sets the dark espresso brown background for the whole sidebar area. */
-[data-testid="stSidebar"] {
-    background-color: var(--sidebar) !important;
+/* ════════════════════════
+   COLLAPSED RAIL
+   ════════════════════════ */
+.rail {
+    width: 64px;
+    min-height: 100vh;
+    background: var(--orange-lt);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 14px;
+}
+.rail-sep {
+    width: 32px; height: 1px;
+    background: rgba(65,35,20,0.28);
+    margin: 10px 0 12px;
+}
+.rail-item {
+    width: 44px; height: 44px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    margin-bottom: 4px;
+    transition: background 0.15s;
+}
+.rail-item:hover   { background: rgba(65,35,20,0.15); }
+.rail-item.active  { background: var(--accent); }
+
+/* ════════════════════════
+   EXPANDED PANEL
+   ════════════════════════ */
+.panel {
+    width: 256px;
+    min-height: 100vh;
+    background: var(--sidebar);
+    display: flex;
+    flex-direction: column;
 }
 
-/* ── Sidebar collapse arrow button ───────────────────────────────────────────
-   The arrow/chevron that collapses the sidebar sits on the dark background.
-   We use multiple overlapping selectors because Streamlit changes the exact
-   data-testid across versions — this ensures at least one always matches. */
-[data-testid="stSidebar"] button svg,
-[data-testid="stSidebar"] button[kind="header"] svg,
-[data-testid="stSidebar"] .stButton button svg {
-    color: #F4A460 !important;
-    fill: #F4A460 !important;
-    stroke: #F4A460 !important;
+/* Header block */
+.panel-hdr {
+    background: var(--sidebar-dk);
+    padding: 18px 18px 16px;
+    border-bottom: 1px solid rgba(244,164,96,0.2);
+    position: relative;
 }
-[data-testid="stSidebar"] button:hover {
-    background-color: rgba(244, 164, 96, 0.12) !important;
+.panel-hdr::before {
+    content: ''; position: absolute;
+    top: 0; left: 0; right: 0; height: 3px;
+    background: var(--orange-lt);
+}
+.panel-brand {
+    display: flex; align-items: center;
+    justify-content: space-between;
+}
+.panel-brand-left {
+    display: flex; align-items: center; gap: 11px;
+}
+.panel-icon {
+    width: 38px; height: 38px;
+    background: var(--accent); border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 19px; flex-shrink: 0;
+}
+.panel-name {
+    font-family: 'Saira Condensed', sans-serif;
+    font-size: 20px; font-weight: 700;
+    color: var(--orange-lt);
+    line-height: 1; display: block;
+}
+.panel-tagline {
+    font-family: 'Roboto Condensed', sans-serif;
+    font-size: 10px; color: var(--nav-muted);
+    margin-top: 2px; letter-spacing: 0.07em;
+    text-transform: uppercase; display: block;
 }
 
-/* ── Hamburger icon (sidebar collapsed, on light beige background) ───────────
-   When the sidebar is collapsed the toggle button sits on the beige main
-   background, so the icon needs to be dark to contrast against it. */
-[data-testid="collapsedControl"] svg {
-    fill: var(--text) !important;
+/* Section label */
+.panel-section {
+    font-family: 'Roboto Condensed', sans-serif;
+    font-size: 10px; font-weight: 700;
+    color: var(--nav-muted);
+    letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 18px 20px 6px;
 }
 
-/* ── KPI metric cards ────────────────────────────────────────────────────────
-   Each st.metric() renders inside [data-testid="stMetric"]. We give each card
-   a white background, a coloured left border as a visual anchor, and a subtle
-   border on the other three sides to lift it off the beige background. */
+/* Nav items */
+.panel-nav { padding: 0 10px; flex: 1; }
+.nav-item {
+    display: flex; align-items: center; gap: 11px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    margin-bottom: 2px;
+    border-left: 3px solid transparent;
+    font-family: 'Roboto Condensed', sans-serif;
+    font-size: 15px;
+    color: var(--nav-text);
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.nav-item:hover {
+    background: rgba(244,164,96,0.1);
+    color: var(--gold);
+    border-color: rgba(221,168,83,0.3);
+}
+.nav-item.active {
+    background: rgba(182,84,49,0.28);
+    color: var(--orange-lt);
+    font-weight: 700;
+    border-color: var(--accent);
+}
+
+/* Footer */
+.panel-footer {
+    padding: 12px 20px 16px;
+    border-top: 1px solid rgba(244,164,96,0.12);
+}
+.panel-footer span {
+    font-family: 'Roboto Condensed', sans-serif;
+    font-size: 11px; color: var(--nav-muted);
+    display: flex; align-items: center; gap: 7px;
+}
+.dot {
+    width: 6px; height: 6px;
+    background: var(--accent); border-radius: 50%;
+    display: inline-block;
+}
+
+/* ════════════════════
+   HIDDEN STREAMLIT BUTTONS
+   Rendered off-screen so JS can click them,
+   but they never appear visually.
+   ════════════════════ */
+.hidden-btns {
+    position: absolute;
+    width: 1px; height: 1px;
+    opacity: 0; overflow: hidden;
+    pointer-events: none;
+}
+
+/* ════════════════════
+   MAIN CONTENT
+   ════════════════════ */
+.main {
+    padding: 30px 38px;
+    background: var(--bg);
+    flex: 1;
+}
+.page-title {
+    font-family: 'Saira Condensed', sans-serif;
+    font-size: 32px; font-weight: 700;
+    color: #1A0A04; margin: 0 0 4px;
+}
+.page-bar {
+    width: 48px; height: 4px;
+    background: var(--accent);
+    border-radius: 2px; margin-bottom: 22px;
+}
+.subtitle {
+    font-family: 'Roboto Condensed', sans-serif;
+    font-size: 15px; color: var(--text-soft); margin-bottom: 22px;
+}
+
+/* KPI cards */
 [data-testid="stMetric"] {
     background-color: var(--surface) !important;
-    border-radius: 6px;
-    padding: 18px 22px;
-    border-left: 5px solid var(--accent);
-    border-top: 1px solid var(--border);
-    border-right: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
+    border-radius: 6px !important;
+    padding: 18px 22px !important;
+    border-left: 5px solid var(--accent) !important;
+    border-top: 1px solid var(--border) !important;
+    border-right: 1px solid var(--border) !important;
+    border-bottom: 1px solid var(--border) !important;
 }
-
-/* Label (e.g. "FATURAMENTO TOTAL") — uppercased and softened */
 [data-testid="stMetricLabel"] {
+    font-family: 'Roboto Condensed', sans-serif !important;
+    font-size: 12px !important; font-weight: 700 !important;
     color: var(--text-soft) !important;
-    font-size: 13px !important;
-    font-weight: 500 !important;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
+    text-transform: uppercase !important;
+    letter-spacing: 0.08em !important;
 }
-
-/* Value (e.g. "R$ —") — large serif for visual weight */
 [data-testid="stMetricValue"] {
+    font-family: 'Saira Condensed', sans-serif !important;
+    font-size: 34px !important; font-weight: 700 !important;
     color: var(--text) !important;
-    font-family: 'Playfair Display', serif !important;
-    font-size: 30px !important;
-}
-
-/* ── Section divider ─────────────────────────────────────────────────────────
-   The <hr> below the page title uses a gold colour to add warmth and echo
-   the coffee-shop aesthetic. */
-hr {
-    border: none !important;
-    border-bottom: 2px solid var(--gold) !important;
-    margin: 4px 0 24px !important;
-}
-
-/* ── Page subtitle ───────────────────────────────────────────────────────────
-   The short descriptive line below the divider uses the softer brown so it
-   reads as secondary information without vanishing into the background. */
-.subtitle {
-    color: var(--text-soft) !important;
-    font-size: 15px;
-    margin-bottom: 20px;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Sidebar navigation styles ─────────────────────────────────────────────────
-# Extracted into a constant so the option_menu() call below stays readable.
-# All colours are hardcoded strings here because streamlit_option_menu doesn't
-# accept CSS variables — it inlines the styles directly into the component.
-MENU_STYLES = {
-    # The nav container itself should be invisible (same colour as sidebar).
-    "container": {"padding": "0", "background-color": "#412314", "border": "none"},
-    # Icons use the warm gold to stand out against the dark sidebar.
-    "icon": {"color": "#DDA853", "font-size": "18px"},
-    # Inactive nav links: light beige text on dark background.
-    "nav-link": {
-        "font-family": "'DM Sans', sans-serif",
-        "font-size": "16px",
-        "color": "#F5EEDC",
-        "margin": "4px 10px",
-        "border-radius": "4px",
-    },
-    # Active / selected link: filled with burnt orange so the current page is
-    # immediately obvious, with white text for maximum contrast.
-    "nav-link-selected": {
-        "background-color": "#B65431",
-        "color": "#FFFFFF",
-        "font-weight": "500",
-    },
-}
+# ── Build sidebar HTML ────────────────────────────────────────────────────────
+if is_open:
+    nav_html = ""
+    for p in PAGES:
+        cls     = "nav-item active" if p == page else "nav-item"
+        ico     = icon_img(p, 18, "active" if p == page else "default")
+        nav_html += f'<div class="{cls}" onclick="{js_click(p)}">{ico}<span>{p}</span></div>'
 
-# ── Sidebar content ───────────────────────────────────────────────────────────
-# Everything inside this block renders in the sidebar panel.
-with st.sidebar:
-    # App logo / title — Playfair Display gives it a refined, editorial feel.
-    # Colour #DDA853 (warm gold) contrasts well against the dark sidebar.
-    st.markdown(
-        "<h2 style='text-align:center; color:#F4A460; padding:24px 0 8px; "
-        "font-family:Playfair Display,serif; font-size:24px; letter-spacing:0.02em;'>"
-        "☕ Coffee Insight</h2>",
-        unsafe_allow_html=True,
-    )
-    st.markdown("<br>", unsafe_allow_html=True)
+    sidebar_html = f"""
+    <div class="panel">
+        <div class="panel-hdr">
+            <div class="panel-brand">
+                <div class="panel-brand-left">
+                    <div class="panel-icon">☕</div>
+                    <div>
+                        <span class="panel-name">Coffee Insight</span>
+                        <span class="panel-tagline">Painel Gerencial</span>
+                    </div>
+                </div>
+                <div class="hbg" onclick="{js_click('__TOGGLE__')}">{HAMBURGER_SVG}</div>
+            </div>
+        </div>
+        <div class="panel-section">Navegação</div>
+        <div class="panel-nav">{nav_html}</div>
+        <div class="panel-footer">
+            <span><i class="dot"></i>Março 2024</span>
+        </div>
+    </div>"""
+else:
+    rail_html = ""
+    for p in PAGES:
+        cls  = "rail-item active" if p == page else "rail-item"
+        ico  = icon_img(p, 22, "white" if p == page else "dark")
+        rail_html += f'<div class="{cls}" title="{p}" onclick="{js_click(p)}">{ico}</div>'
 
-    # option_menu renders a styled navigation list.
-    # The selected page name is returned as a plain string (e.g. "Visão Geral").
-    page = option_menu(
-        menu_title=None,
-        options=["Visão Geral", "Clientes", "Produtos", "Vendas"],
-        icons=["house-door", "person", "cup", "bar-chart-line"],
-        default_index=0,
-        styles=MENU_STYLES,
-    )
+    sidebar_html = f"""
+    <div class="rail">
+        <div class="hbg" onclick="{js_click('__TOGGLE__')}" style="color:#2E1710">{HAMBURGER_SVG}</div>
+        <div class="rail-sep"></div>
+        {rail_html}
+    </div>"""
 
-# ── Page header ───────────────────────────────────────────────────────────────
-# Rendered outside the sidebar block so it always appears in the main area.
-# Inline colour is hardcoded to guarantee Streamlit doesn't override it.
-st.markdown(
-    "<h1 style='font-family:Playfair Display,serif; font-size:32px; color:#1A0A04;'>"
-    "Painel Gerencial — Março 2024</h1>",
-    unsafe_allow_html=True,
-)
-st.markdown("<hr>", unsafe_allow_html=True)
+# ── Layout ────────────────────────────────────────────────────────────────────
+col_sb, col_main = st.columns([256, 900] if is_open else [64, 900], gap="small")
 
-# ── Page routing ──────────────────────────────────────────────────────────────
-# Each branch renders the content for the selected sidebar page.
-# st.columns() splits the row into equal-width sections for the KPI cards.
+with col_sb:
+    st.markdown(sidebar_html, unsafe_allow_html=True)
 
-if page == "Visão Geral":
-    st.markdown("<p class='subtitle'>Acompanhamento macro do desempenho da cafeteria.</p>", unsafe_allow_html=True)
+    # Hidden buttons — rendered in a 1×1px invisible div.
+    # The JS in the HTML onclick attributes finds and clicks these.
+    st.markdown('<div class="hidden-btns">', unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Faturamento Total", "R$ —")
-    col2.metric("Total de Pedidos", "—")
-    col3.metric("Ticket Médio", "R$ —")
+    if st.button("__TOGGLE__", key="toggle"):
+        st.session_state.sb_open = not st.session_state.sb_open
+        st.rerun()
 
-    st.container(height=350, border=False)  # placeholder for future chart
+    for p in PAGES:
+        if st.button(p, key=f"nav_{p}"):
+            st.session_state.page = p
+            if not st.session_state.sb_open:
+                st.session_state.sb_open = True
+            st.rerun()
 
-elif page == "Clientes":
-    st.markdown("<p class='subtitle'>Análise de métodos de pagamento e fidelidade.</p>", unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    col1, col2 = st.columns(2)
-    col1.metric("Transações em Cartão", "— %")
-    col2.metric("Transações em Dinheiro", "— %")
+# ── Main content ──────────────────────────────────────────────────────────────
+with col_main:
+    st.markdown("<div class='main'>", unsafe_allow_html=True)
+    st.markdown("<div class='page-title'>Painel Gerencial — Março 2024</div>", unsafe_allow_html=True)
+    st.markdown("<div class='page-bar'></div>", unsafe_allow_html=True)
 
-    st.container(height=350, border=False)  # placeholder for future chart
+    if page == "Visão Geral":
+        st.markdown("<p class='subtitle'>Acompanhamento macro do desempenho da cafeteria.</p>", unsafe_allow_html=True)
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Faturamento Total", "R$ —")
+        c2.metric("Total de Pedidos",  "—")
+        c3.metric("Ticket Médio",      "R$ —")
+        st.container(height=350, border=False)
 
-elif page == "Produtos":
-    st.markdown("<p class='subtitle'>Quais cafés estão gerando mais receita.</p>", unsafe_allow_html=True)
+    elif page == "Clientes":
+        st.markdown("<p class='subtitle'>Análise de métodos de pagamento e fidelidade.</p>", unsafe_allow_html=True)
+        c1, c2 = st.columns(2)
+        c1.metric("Transações em Cartão",   "— %")
+        c2.metric("Transações em Dinheiro", "— %")
+        st.container(height=350, border=False)
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Produto Mais Vendido", "—")
-    col2.metric("Produto Menos Vendido", "—")
-    col3.metric("Receita do Top 1", "R$ —")
+    elif page == "Produtos":
+        st.markdown("<p class='subtitle'>Quais cafés estão gerando mais receita.</p>", unsafe_allow_html=True)
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Produto Mais Vendido",  "—")
+        c2.metric("Produto Menos Vendido", "—")
+        c3.metric("Receita do Top 1",      "R$ —")
+        st.container(height=350, border=False)
 
-    st.container(height=350, border=False)  # placeholder for future chart
+    elif page == "Vendas":
+        st.markdown("<p class='subtitle'>Análise de horários de pico e dias da semana.</p>", unsafe_allow_html=True)
+        c1, c2 = st.columns(2)
+        c1.metric("Horário de Pico",      "—")
+        c2.metric("Melhor Dia da Semana", "—")
+        st.container(height=350, border=False)
 
-elif page == "Vendas":
-    st.markdown("<p class='subtitle'>Análise de horários de pico e dias da semana.</p>", unsafe_allow_html=True)
-
-    col1, col2 = st.columns(2)
-    col1.metric("Horário de Pico", "—")
-    col2.metric("Melhor Dia da Semana", "—")
-
-    st.container(height=350, border=False)  # placeholder for future chart
+    st.markdown("</div>", unsafe_allow_html=True)
