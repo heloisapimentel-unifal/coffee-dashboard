@@ -26,7 +26,35 @@ if "page" not in st.session_state:
     st.session_state.page = "Visão Geral"
 if "prev_page" not in st.session_state:
     st.session_state.prev_page = st.session_state.page
+# --- Lógica de Scroll Persistente ---
+if "prev_page" not in st.session_state:
+    st.session_state.prev_page = st.session_state.page
 
+if st.session_state.prev_page != st.session_state.page:
+    st.components.v1.html(
+        """
+        <script>
+            function performScroll() {
+                const parentDoc = window.parent.document;
+                const anchor = parentDoc.getElementById('top-anchor');
+                const mainContainer = parentDoc.querySelector('.main');
+                
+                if (anchor) {
+                    anchor.scrollIntoView({block: 'start', behavior: 'instant'});
+                } else if (mainContainer) {
+                    mainContainer.scrollTo(0, 0);
+                }
+            }
+
+            // Executa o scroll em rajada para vencer o carregamento dos gráficos
+            performScroll(); 
+            let intervals = [100, 300, 600, 1000, 2000];
+            intervals.forEach(t => setTimeout(performScroll, t));
+        </script>
+        """,
+        height=0,
+    )
+    st.session_state.prev_page = st.session_state.page
 PAGES = ["Visão Geral", "Clientes", "Produtos", "Vendas"]
 
 # Ícones SVG outline — estilo Lucide (mesmo da imagem de referência)
@@ -54,7 +82,15 @@ st.markdown("""
     --text-soft:  #42210B;
     --border:     #D4C4B0;
 }
-
+/* Alvo: O fundo do container na segunda coluna (Mais Vendido) */
+/* Alvo ultra-específico para o fundo do segundo card */
+    [data-testid="column"]:nth-of-type(2) [data-testid="metric-container"] {
+        background-color: #95A75F !important;
+        border: 1px solid #95A75F !important;
+        padding: 10px 15px !important;
+        border-radius: 10px !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+    }
 html, body, [class*="css"] {
     font-family: 'Roboto Condensed', sans-serif !important;
     color: var(--text) !important;
@@ -89,12 +125,14 @@ header { background: transparent !important; }
 [data-testid="stSidebarCollapseButton"] > button:hover { background-color: var(--accent) !important; }
 [data-testid="stSidebarCollapseButton"] svg { fill: #FFFFFF !important; stroke: none !important; }
 
-/* ── Esconde os botões-gatilho do Streamlit ── */
+/* ── Esconde os botões nativos do Streamlit na Sidebar ── */
 [data-testid="stSidebar"] .nav-hidden {
-    position: absolute !important;
-    width: 1px !important; height: 1px !important;
-    overflow: hidden !important; opacity: 0 !important;
-    pointer-events: none !important;
+    display: none !important;
+}
+
+/* Caso queira manter a acessibilidade para o JS clicar neles, use este: */
+[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] > div:has(button[kind="secondary"]) {
+    display: none;
 }
 
 /* ── iframe sem borda/fundo branco ── */
@@ -113,7 +151,7 @@ header { background: transparent !important; }
     text-transform: uppercase !important; letter-spacing: 0.08em !important;
 }
 [data-testid="stMetricValue"] {
-    font-family: 'Saira Condensed', sans-serif !important; font-size: 34px !important;
+    font-family: 'Saira Condensed', sans-serif !important; font-size: 24px !important;
     font-weight: 700 !important; color: var(--text) !important;
 }
 
@@ -191,6 +229,7 @@ def build_nav_html(current_page: str) -> str:
 <head>
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
 <style>
+    
   * {{ margin:0; padding:0; box-sizing:border-box; }}
   body {{ background:transparent; padding:0 10px; font-family:'Roboto Condensed',sans-serif; }}
   .nav-label {{
@@ -215,18 +254,25 @@ def build_nav_html(current_page: str) -> str:
   {items}
   <script>
     document.querySelectorAll('.item').forEach(function(el) {{
-      el.addEventListener('click', function() {{
-        var pageName = this.getAttribute('data-page');
-        var parent   = window.parent.document;
-        parent.querySelectorAll('[data-testid="stSidebar"] button').forEach(function(btn) {{
-          if (btn.innerText.trim() === pageName) btn.click();
-        }});
-      }});
+                el.addEventListener('click', function() {{
+                    var pageName = this.getAttribute('data-page');
+                var parent = window.parent.document;    
+                var mainContent = parent.querySelector('.main');
+                var appContainer = parent.querySelector('[data-testid="stAppViewContainer"]');
+    
+                if (mainContent) mainContent.scrollTo({{ top: 0, behavior: 'instant' }});
+                if (appContainer) appContainer.scrollTo({{ top: 0, behavior: 'instant' }});
+
+                // Clica no botão invisível do Streamlit para mudar a página
+                parent.querySelectorAll('[data-testid="stSidebar"] button').forEach(function(btn) {{
+                 if (btn.innerText.trim() === pageName) btn.click();
+                }});
+            }});
     }});
+
   </script>
 </body>
 </html>"""
-
 
 # ── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -242,7 +288,6 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    # Botões invisíveis — controlam o estado real do Streamlit
     st.markdown('<div class="nav-hidden">', unsafe_allow_html=True)
     for p in PAGES:
         if st.button(p, key=f"nav_{p}"):
@@ -251,19 +296,18 @@ with st.sidebar:
                 st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Nav visual com ícones SVG (clica nos botões ocultos via JS)
     st.components.v1.html(
         build_nav_html(st.session_state.page),
-        height=240,
+        height=260,
         scrolling=False,
     )
 
+    # 4. Rodapé
     st.markdown("""
     <div class="sb-footer">
         <div class="sb-footer-row"><span class="sb-dot"></span>Março 2024</div>
     </div>
     """, unsafe_allow_html=True)
-
 
 # ── Main Content ──────────────────────────────────────────────────────────────
 page = st.session_state.page
@@ -282,10 +326,10 @@ if page == "Visão Geral":
     dias_pt = {'Sun':'Domingo','Mon':'Segunda','Tue':'Terça','Wed':'Quarta','Thu':'Quinta','Fri':'Sexta','Sat':'Sábado'}
 
     c1,c2,c3,c4 = st.columns(4)
-    c1.metric("Faturamento Total", f"R$ {fat_total:,.2f}".replace(',','X').replace('.',',').replace('X','.'))
-    c2.metric("Ticket Médio",      f"R$ {tm:,.2f}".replace(',','X').replace('.',',').replace('X','.'))
-    c3.metric("Mais Vendido",      mv)
-    c4.metric("Dia Mais Fraco",    dias_pt.get(dmf, dmf))
+    c1.metric("Faturamento Total", f"$ {fat_total:,.2f}".replace(',','X').replace('.',',').replace('X','.'))
+    c2.metric("MAIS VENDIDO", mv, help=f"O item mais vendido é: {mv}")
+    c3.metric("MENOS VENDIDO", "Espresso", help="O item menos vendido é: Espresso")
+    c4.metric("DIA MAIS FRACO", dias_pt.get(dmf, dmf), help=f"O dia com menor movimento é: {dias_pt.get(dmf, dmf)}")
     st.markdown("<br>", unsafe_allow_html=True)
 
     col1, col2 = st.columns([2,1], gap="large")
@@ -321,7 +365,7 @@ if page == "Visão Geral":
             html = '<div class="t5-box">'
             for _, r in t5.iterrows():
                 pct = (r['Faturamento']/mx)*100
-                val = f"R$ {r['Faturamento']:,.2f}".replace(',','X').replace('.',',').replace('X','.')
+                val = f"$ {r['Faturamento']:,.2f}".replace(',','X').replace('.',',').replace('X','.')
                 html += f'<div class="t5-row"><div class="t5-name" title="{r["Produto"]}">{r["Produto"]}</div><div class="t5-track"><div class="t5-fill" style="width:{pct}%;"></div></div><div class="t5-val">{val}</div></div>'
             html += '</div>'
             st.markdown(html, unsafe_allow_html=True)
@@ -338,7 +382,7 @@ if page == "Visão Geral":
         fig2.update_layout(margin=dict(l=0,r=0,t=10,b=0), coloraxis_showscale=False,
                            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
                            xaxis=dict(title="<b>Produto</b>",              title_font=dict(color='#42210B'), tickfont=dict(color='#42210B',weight='bold')),
-                           yaxis=dict(title="<b>Receita Acumulada (R$)</b>",title_font=dict(color='#42210B'), tickfont=dict(color='#42210B',weight='bold'), gridcolor='rgba(66,33,11,0.15)'))
+                           yaxis=dict(title="<b>Receita Acumulada ($)</b>",title_font=dict(color='#42210B'), tickfont=dict(color='#42210B',weight='bold'), gridcolor='rgba(66,33,11,0.15)'))
         st.plotly_chart(fig2, use_container_width=True, config={'displayModeBar':False})
 
 # ═══════════════════════════════════════════════════════════
@@ -369,7 +413,7 @@ elif page == "Clientes":
         c1.metric("Clientes Únicos (Cartão)", f"{total_c}")
         c2.metric("Pagamentos no Cartão",     f"{pct_c:.1f}%".replace('.',','))
         c3.metric("Total de Clientes VIP",    f"{total_vip}")
-        c4.metric("Ticket Médio VIP",         f"R$ {tvip:,.2f}".replace(',','X').replace('.',',').replace('X','.'))
+        c4.metric("Ticket Médio VIP",         f"$ {tvip:,.2f}".replace(',','X').replace('.',',').replace('X','.'))
         st.markdown("<br>", unsafe_allow_html=True)
 
         col1, col2 = st.columns(2, gap="large")
@@ -393,7 +437,7 @@ elif page == "Clientes":
             mx2 = tc['money'].max()
             for i, r in tc.iterrows():
                 pct = (r['money']/mx2)*100
-                val = f"R$ {r['money']:,.2f}".replace(',','X').replace('.',',').replace('X','.')
+                val = f"$ {r['money']:,.2f}".replace(',','X').replace('.',',').replace('X','.')
                 hc += f'<div class="t5-row"><div class="t5-name" title="ID:{r["card"]}">{medals[i]} Maior Comprador</div><div class="t5-track"><div class="t5-fill" style="width:{pct}%;background:#CD9B26;"></div></div><div class="t5-val">{val}</div></div>'
             hc += '</div>'
             st.markdown(hc, unsafe_allow_html=True)
@@ -429,7 +473,7 @@ elif page == "Produtos":
         c1.metric("Itens no Cardápio",   f"{perf['coffee_name'].nunique()}")
         c2.metric("Mais Vendido",        mais)
         c3.metric("Menos Vendido",       menos)
-        c4.metric("Preço Médio do Menu", f"R$ {pm:,.2f}".replace(',','X').replace('.',',').replace('X','.'))
+        c4.metric("Preço Médio do Menu", f"$ {pm:,.2f}".replace(',','X').replace('.',',').replace('X','.'))
         st.markdown("<br>", unsafe_allow_html=True)
 
         st.markdown("### Matriz de Performance de Produtos")
@@ -437,7 +481,7 @@ elif page == "Produtos":
         fig_s = px.scatter(perf, x='quantidade', y='faturamento', size='faturamento',
                            color='faturamento', text='coffee_name', hover_name='coffee_name',
                            color_continuous_scale=['#CD9B26','#DB6A19','#BA5934','#42210B'],
-                           labels={'quantidade':'Unidades Vendidas','faturamento':'Receita Total (R$)'})
+                           labels={'quantidade':'Unidades Vendidas','faturamento':'Receita Total ($)'})
         fig_s.update_traces(textposition='top center', textfont=dict(color='#42210B',size=12,weight='bold'),
                             marker=dict(line=dict(width=1,color='#42210B')))
         fig_s.update_layout(margin=dict(l=0,r=0,t=20,b=0), height=450, coloraxis_showscale=False,
@@ -445,7 +489,7 @@ elif page == "Produtos":
                             xaxis=dict(title="<b>Volume de Vendas (Unidades)</b>", title_font=dict(color='#42210B',size=14),
                                        tickfont=dict(color='#42210B',weight='bold'), showgrid=True,
                                        gridcolor='rgba(66,33,11,0.1)', zerolinecolor='rgba(66,33,11,0.3)'),
-                            yaxis=dict(title="<b>Faturamento Total (R$)</b>", title_font=dict(color='#42210B',size=14),
+                            yaxis=dict(title="<b>Faturamento Total ($)</b>", title_font=dict(color='#42210B',size=14),
                                        tickfont=dict(color='#42210B',weight='bold'), showgrid=True,
                                        gridcolor='rgba(66,33,11,0.1)', zerolinecolor='rgba(66,33,11,0.3)'))
         st.plotly_chart(fig_s, use_container_width=True, config={'displayModeBar':False})
@@ -487,7 +531,7 @@ elif page == "Vendas":
     turnos_pt = {'Morning':'Manhã','Afternoon':'Tarde','Evening':'Noite'}
 
     c1,c2,c3,c4 = st.columns(4)
-    c1.metric("Média de Receita/Dia",   f"R$ {vpd:,.2f}".replace(',','X').replace('.',',').replace('X','.'))
+    c1.metric("Média de Receita/Dia",   f"$ {vpd:,.2f}".replace(',','X').replace('.',',').replace('X','.'))
     c2.metric("Média de Pedidos/Dia",   f"{ppd:.0f}")
     c3.metric("Melhor Dia da Semana",   dias_pt.get(md, md))
     c4.metric("Turno de Pico",          turnos_pt.get(pic, pic))
@@ -530,7 +574,7 @@ elif page == "Vendas":
 
     if 'cash_type' in df.columns and 'money' in df.columns:
         with col_pie:
-            st.markdown("### Proporção de Receita por Método")
+            st.markdown("### Proporção de Receita por Método de Pagamento")
             rm = df.groupby('cash_type')['money'].sum().reset_index()
             rm['cash_type'] = rm['cash_type'].map({'card':'Cartão','cash':'Dinheiro'})
             fp2 = px.pie(rm, values='money', names='cash_type', hole=0.45,
@@ -553,8 +597,8 @@ elif page == "Vendas":
             else:
                 ins = "Dados insuficientes para comparação."
 
-            vc = f"R$ {tmc:,.2f}".replace(',','X').replace('.',',').replace('X','.') if pd.notna(tmc) else "R$ 0,00"
-            vd = f"R$ {tmd:,.2f}".replace(',','X').replace('.',',').replace('X','.') if pd.notna(tmd) else "R$ 0,00"
+            vc = f"$ {tmc:,.2f}".replace(',','X').replace('.',',').replace('X','.') if pd.notna(tmc) else "$ 0,00"
+            vd = f"$ {tmd:,.2f}".replace(',','X').replace('.',',').replace('X','.') if pd.notna(tmd) else "$ 0,00"
 
             st.markdown(f"""
             <div style="display:flex;gap:20px;margin-top:10px;">
